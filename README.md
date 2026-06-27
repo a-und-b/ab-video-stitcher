@@ -71,6 +71,8 @@ are skipped with a warning rather than aborting the run.
 python video_stitcher_gui.py
 ```
 
+![The AB Video Stitcher GUI: input/output pickers, collage/concat mode, canvas presets with a custom WxH field, encoder options, and a live log with a progress bar](assets/gui-screenshot.png)
+
 Pick an input folder, choose collage or concat, tweak a few options, and hit
 **Stitch**. The **Canvas** dropdown offers the same presets as the CLI; pick
 **custom** to type an explicit `WxH` in the adjacent field. Encoding runs in a
