@@ -7,7 +7,8 @@ Two modes:
     until the longest one finishes. The layout algorithm packs videos to fill
     as many pixels as possible, respecting each clip's native aspect ratio
     (black bars fill any remaining space). Canvas is selectable with --canvas:
-    4k (3840x2160) or 5k (5120x2160, ultrawide; default).
+    a preset (720p, 1080p, 1440p, 4k, 5k, square, vertical) or an explicit
+    WxH like 1920x1080. Default: 5k (5120x2160, ultrawide).
   concat: Clips play one after another (linear). Each clip is scaled and
     padded to the resolution of the largest clip in the batch so they join
     seamlessly.
@@ -22,6 +23,7 @@ Usage:
     python video_stitcher.py /path/to/folder --canvas 1920x1080  # custom size
     python video_stitcher.py /path/to/folder --mode concat   # join clips end to end
     python video_stitcher.py /path/to/folder --codec hevc    # force H.265
+    python video_stitcher.py /path/to/folder -f              # overwrite existing output
 
 Codec note: the default 5k canvas (5120x2160) exceeds H.264's Mac
 hardware-decode limit, so its output is tagged Level 6.0 and "plays then

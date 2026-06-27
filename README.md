@@ -82,6 +82,26 @@ stays responsive. Canvas and Columns are collage-only and are disabled in
 concat mode. If the output file already exists, the GUI asks before
 overwriting it.
 
+### Convenience launchers
+
+Thin wrappers in [`bin/`](bin/) save you typing `python …`:
+
+```bash
+./bin/ab-stitch /path/to/folder --canvas 1080p   # CLI, forwards all arguments
+./bin/ab-stitch-gui                              # GUI
+```
+
+They resolve their own location (following symlinks), so you can drop them on
+your `PATH` and call them from anywhere:
+
+```bash
+ln -s "$PWD/bin/ab-stitch" /usr/local/bin/ab-stitch
+ab-stitch ~/clips --canvas square
+```
+
+Override the interpreter with `PYTHON=/path/to/python3` if `python3` isn't your
+default.
+
 ## How the collage layout works
 
 The layout algorithm tries **every column count from 1..n**, lays the clips into

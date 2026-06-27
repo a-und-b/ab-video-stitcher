@@ -14,7 +14,7 @@ Two entry points, both dependency-free (standard library only):
 - [video_stitcher.py](video_stitcher.py) — the CLI and all the real logic (probing, layout, ffmpeg command building).
 - [video_stitcher_gui.py](video_stitcher_gui.py) — a thin tkinter GUI that **imports** from `video_stitcher.py` (no logic duplication). Don't reimplement encoding logic here; add it to the CLI module and call it.
 
-There is no package config, no test suite, no git — just these two scripts and some generated `stitched_4k_*.mp4` outputs.
+There is no package config and no test suite. Alongside the two scripts: [bin/](bin/) holds thin bash launchers (`ab-stitch`, `ab-stitch-gui`) that just `exec python3` the matching module (symlink-safe path resolution, `PYTHON` override) — they contain no logic, so keep them in sync if you rename the modules; [demo/](demo/) generates copyright-free sample clips and the README GIFs; generated `stitched_*.mp4` outputs are gitignored.
 
 ## Running
 

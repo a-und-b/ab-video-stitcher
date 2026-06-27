@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Thin launcher for the AB Video Stitcher GUI (see ab-stitch for the CLI).
+#
+# Resolves its own real location (following symlinks) so it works from anywhere
+# and when symlinked onto your PATH. Override the interpreter with PYTHON=…
+#
+#   ./bin/ab-stitch-gui
+#   ln -s "$PWD/bin/ab-stitch-gui" /usr/local/bin/ab-stitch-gui
+set -euo pipefail
+
+src="${BASH_SOURCE[0]}"
+while [ -h "$src" ]; do                      # resolve symlinks to the real file
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ $src != /* ]] && src="$dir/$src"
+done
+root="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+exec "${PYTHON:-python3}" "$root/video_stitcher_gui.py" "$@"
