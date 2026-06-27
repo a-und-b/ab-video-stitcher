@@ -1,0 +1,15 @@
+# Generated output videos
+stitched_4k*.mp4
+stitched_5k*.mp4
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Claude Code local settings
+.claude/settings.local.json
