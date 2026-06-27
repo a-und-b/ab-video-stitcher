@@ -30,6 +30,7 @@ from video_stitcher import (
     DEFAULT_CANVAS,
     build_concat_cmd,
     build_ffmpeg_cmd,
+    colliding_input,
     compute_layout,
     discover_clips,
     parse_canvas,
@@ -269,6 +270,13 @@ class StitcherGUI:
                 messagebox.showerror("AB Video Stitcher", f"Canvas: {e}")
                 return
 
+        # Confirm before clobbering an existing output. (An output that is also
+        # an input clip is caught in the worker, where the clip list is known.)
+        if output.exists() and not messagebox.askyesno(
+                "AB Video Stitcher",
+                f"{output.name} already exists.\n\nOverwrite it?"):
+            return
+
         # Lock UI.
         self.run_btn.configure(state="disabled")
         self.reveal_btn.configure(state="disabled")
@@ -297,6 +305,14 @@ class StitcherGUI:
             clips = discover_clips(folder)
             for c in clips:
                 emit(f"  Found: {c.path.name}  ({c.width}x{c.height}, {c.duration:.1f}s)\n")
+
+            clash = colliding_input(output, clips)
+            if clash is not None:
+                self.msg_queue.put(("error",
+                    f"Output {output.name} is also an input clip ({clash.name}). "
+                    f"ffmpeg can't write over a file it's reading — choose a "
+                    f"different name or output folder."))
+                return
 
             if mode == "concat":
                 biggest = max(clips, key=lambda c: c.width * c.height)

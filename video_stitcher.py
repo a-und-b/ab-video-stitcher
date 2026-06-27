@@ -198,6 +198,20 @@ def discover_clips(folder: Path) -> List[Clip]:
     return clips
 
 
+def colliding_input(output: Path, clips: List[Clip]) -> "Path | None":
+    """Return the input clip path that *output* would overwrite in place, if any.
+
+    ffmpeg cannot read from and write to the same file ("cannot edit in-place"),
+    so writing the output on top of one of its own inputs is always fatal — no
+    --force can rescue it. Compared by resolved absolute path.
+    """
+    out = output.resolve()
+    for c in clips:
+        if c.path.resolve() == out:
+            return c.path
+    return None
+
+
 # ── Layout algorithm ─────────────────────────────────────────────────────────
 @dataclass
 class Cell:
@@ -522,6 +536,12 @@ def main() -> None:
                  "medium", "slow", "slower", "veryslow"],
         help="x264 encoding preset (default: medium)",
     )
+    parser.add_argument(
+        "-f", "--force",
+        action="store_true",
+        help="Overwrite the output file if it already exists "
+             "(by default an existing output aborts the run).",
+    )
     args = parser.parse_args()
 
     if not args.folder.is_dir():
@@ -571,6 +591,17 @@ def main() -> None:
                                crf=args.crf, preset=args.preset,
                                canvas_w=canvas_w, canvas_h=canvas_h, codec=codec)
         out_w, out_h, out_duration = canvas_w, canvas_h, max_duration
+
+    # Guard against clobbering: an output that is also an input is always fatal;
+    # an existing output needs --force.
+    clash = colliding_input(output, clips)
+    if clash is not None:
+        sys.exit(f"Error: output {output} is also an input clip ({clash.name}); "
+                 f"ffmpeg can't write over a file it's reading. "
+                 f"Choose a different name or output folder.")
+    if output.exists() and not args.force:
+        sys.exit(f"Error: {output} already exists. Pass --force to overwrite, "
+                 f"or choose another name with -o.")
 
     codec_note = ""
     if args.codec == "auto" and codec == "hevc":

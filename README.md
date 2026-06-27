@@ -59,6 +59,7 @@ python video_stitcher.py /path/to/folder --canvas 1920x1080  # custom WxH
 python video_stitcher.py /path/to/folder --mode concat    # join clips end to end
 python video_stitcher.py /path/to/folder --codec hevc     # force H.265 (default: auto)
 python video_stitcher.py /path/to/folder --crf 18 --preset slow
+python video_stitcher.py /path/to/folder -f              # overwrite an existing output
 ```
 
 Input files are discovered (case-insensitively) by extension: `.mp4`, `.mov`,
@@ -78,7 +79,8 @@ Pick an input folder, choose collage or concat, tweak a few options, and hit
 **custom** to type an explicit `WxH` in the adjacent field. Encoding runs in a
 background thread and ffmpeg's output streams into a log pane, so the window
 stays responsive. Canvas and Columns are collage-only and are disabled in
-concat mode.
+concat mode. If the output file already exists, the GUI asks before
+overwriting it.
 
 ## How the collage layout works
 
@@ -115,6 +117,9 @@ defaults to HEVC.
 - The default output filename follows the canvas: `stitched_5k.mp4` (collage,
   default canvas), `stitched_1080p.mp4` for a preset, or `stitched_1920x1080.mp4`
   for a custom size; concat writes `stitched.mp4`. Pass `-o` to choose your own.
+- **Overwrite protection:** an existing output aborts the CLI unless you pass
+  `-f`/`--force` (the GUI asks instead). Writing the output on top of one of its
+  own input clips is always refused — ffmpeg can't read and write the same file.
 
 ## License
 
