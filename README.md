@@ -8,6 +8,12 @@ Dependency-free (Python standard library only) — the only requirement is
 `ffmpeg`/`ffprobe` on your `PATH`. Ships with both a command-line tool and a
 small tkinter GUI.
 
+![Collage demo: seven clips of different aspect ratios packed into the 5k canvas, each labelled with its source resolution](assets/collage-demo.gif)
+
+*Seven synthetic clips of differing aspect ratios, packed into the 5k collage
+canvas — labelled with their source resolution. Reproducible from [`demo/`](demo/),
+no licensed footage.*
+
 ## Modes
 
 - **collage** (default) — all clips play **simultaneously** in a grid that is
