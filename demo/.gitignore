@@ -1,0 +1,4 @@
+# Generated demo artifacts — keep the scripts, ignore their output.
+clips/
+*.mp4
+*.gif
