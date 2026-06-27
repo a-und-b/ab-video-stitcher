@@ -16,7 +16,9 @@ Set Padding 20
 Set Theme "Catppuccin Mocha"
 
 # Let the title breathe.
-Type "# AB Video Stitcher — pack clips into a 5k collage" Sleep 800ms Enter
+# NB: keep this an ASCII hyphen, not an em-dash — multibyte chars confuse
+# VHS/ttyd column tracking and scramble the rest of the line.
+Type "# AB Video Stitcher - pack clips into a 5k collage" Sleep 800ms Enter
 Sleep 1s
 
 # Show the inputs (different sizes + durations).
