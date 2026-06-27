@@ -47,7 +47,7 @@ There is no automated test. To verify a change, run the script against a folder 
 
 Both modes are **no audio** (`-an`), and the whole render is **one ffmpeg process** — no intermediate files. Codec is chosen by `codec_output_args()` / `resolve_codec()` (see the H.264 gotcha below).
 
-The GUI ([video_stitcher_gui.py](video_stitcher_gui.py)) reuses steps 1–2 directly, then runs ffmpeg in a **background thread**, streaming output to a log pane. The worker talks to the UI only through a `queue.Queue` drained by `root.after()` — the thread-safe tkinter pattern; don't touch widgets from the worker thread. ffmpeg progress uses `\r`, which the GUI normalizes to `\n` so the log scrolls.
+The GUI ([video_stitcher_gui.py](video_stitcher_gui.py)) reuses steps 1–2 directly, then runs ffmpeg in a **background thread**, streaming output to a log pane. The worker talks to the UI only through a `queue.Queue` drained by `root.after()` — the thread-safe tkinter pattern; don't touch widgets from the worker thread. ffmpeg progress uses `\r`, which the GUI normalizes to `\n` so the log scrolls. The progress bar is **determinate**: `_report_progress()` parses ffmpeg's `time=HH:MM:SS.xx` from each line and fills the bar against the known output duration (collage = longest clip, concat = sum), sent as `("progress", n)` queue messages.
 
 ## Layout algorithm — the core logic
 

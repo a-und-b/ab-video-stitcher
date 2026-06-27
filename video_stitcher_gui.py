@@ -56,6 +56,12 @@ def _canvas_token(display: str) -> str:
     return display.split(" (", 1)[0]
 
 
+# ffmpeg prints "time=HH:MM:SS.xx" on its progress line; we turn that into a
+# fraction of the known output duration to drive a real progress bar.
+_FFMPEG_TIME_RE = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+PROGRESS_MAX = 1000  # progress bar resolution (finer than 100 for smoothness)
+
+
 class StitcherGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -266,7 +272,7 @@ class StitcherGUI:
         # Lock UI.
         self.run_btn.configure(state="disabled")
         self.reveal_btn.configure(state="disabled")
-        self.progress.start(12)
+        self.progress.configure(mode="determinate", maximum=PROGRESS_MAX, value=0)
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
@@ -302,6 +308,7 @@ class StitcherGUI:
                 chosen = resolve_codec(codec, tw, th)
                 cmd = build_concat_cmd(clips, output, tw, th,
                                        crf=crf, preset=preset, codec=chosen)
+                out_duration = total
             else:
                 canvas_label, canvas_w, canvas_h = parse_canvas(canvas)
                 max_dur = max(c.duration for c in clips)
@@ -316,11 +323,12 @@ class StitcherGUI:
                                        crf=crf, preset=preset,
                                        canvas_w=canvas_w, canvas_h=canvas_h,
                                        codec=chosen)
+                out_duration = max_dur
 
             note = "  (auto → HEVC for Mac playback)" if codec == "auto" and chosen == "hevc" else ""
             emit(f"\n  Codec: {chosen}{note}\n")
             emit(f"  Encoding to {output} …\n\n")
-            self._stream_ffmpeg(cmd, emit)
+            self._stream_ffmpeg(cmd, emit, out_duration)
             self.msg_queue.put(("done", str(output)))
 
         except FileNotFoundError:
@@ -330,7 +338,8 @@ class StitcherGUI:
         except Exception as e:  # noqa: BLE001 — surface anything to the user
             self.msg_queue.put(("error", str(e)))
 
-    def _stream_ffmpeg(self, cmd: list[str], emit) -> None:
+    def _stream_ffmpeg(self, cmd: list[str], emit,
+                       total_duration: float = 0.0) -> None:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
@@ -345,12 +354,26 @@ class StitcherGUI:
             buf = buf.replace(b"\r", b"\n")
             *lines, buf = buf.split(b"\n")
             for line in lines:
-                emit(line.decode("utf-8", "replace") + "\n")
+                text = line.decode("utf-8", "replace")
+                emit(text + "\n")
+                self._report_progress(text, total_duration)
         if buf:
             emit(buf.decode("utf-8", "replace") + "\n")
         code = proc.wait()
         if code != 0:
             raise RuntimeError(f"ffmpeg exited with code {code}.")
+
+    def _report_progress(self, text: str, total_duration: float) -> None:
+        """Turn an ffmpeg 'time=…' line into a progress-bar fraction."""
+        if total_duration <= 0:
+            return
+        m = _FFMPEG_TIME_RE.search(text)
+        if not m:
+            return
+        h, mnt, sec = m.groups()
+        elapsed = int(h) * 3600 + int(mnt) * 60 + float(sec)
+        pct = int(PROGRESS_MAX * elapsed / total_duration)
+        self.msg_queue.put(("progress", max(0, min(PROGRESS_MAX, pct))))
 
     # ── UI message pump ───────────────────────────────────────────────────
     def _drain_queue(self) -> None:
@@ -359,13 +382,15 @@ class StitcherGUI:
                 kind, payload = self.msg_queue.get_nowait()
                 if kind == "log":
                     self._log(str(payload))
+                elif kind == "progress":
+                    self.progress.configure(value=payload)
                 elif kind == "done":
-                    self.progress.stop()
+                    self.progress.configure(value=PROGRESS_MAX)
                     self.run_btn.configure(state="normal")
                     self.reveal_btn.configure(state="normal")
                     self._log(f"\n✅ Done! Output: {payload}\n")
                 elif kind == "error":
-                    self.progress.stop()
+                    self.progress.configure(value=0)
                     self.run_btn.configure(state="normal")
                     self._log(f"\n❌ {payload}\n")
                     messagebox.showerror("AB Video Stitcher", str(payload))
