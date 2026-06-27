@@ -44,6 +44,17 @@ PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
 # … ; a name outside this shape means the user typed their own.
 AUTO_OUTPUT_RE = re.compile(r"^stitched(_.+)?\.mp4$")
 
+# Canvas dropdown shows "name (WxH)" so the presets are self-explanatory, but the
+# value handed to parse_canvas is just the name (or "custom").
+CANVAS_CHOICES = [f"{name} ({w}x{h})" for name, (w, h) in CANVASES.items()] + ["custom"]
+DEFAULT_CANVAS_CHOICE = next(
+    c for c in CANVAS_CHOICES if c.split(" (", 1)[0] == DEFAULT_CANVAS)
+
+
+def _canvas_token(display: str) -> str:
+    """Strip the "(WxH)" hint: 'square (1080x1080)' -> 'square'; 'custom' stays."""
+    return display.split(" (", 1)[0]
+
 
 class StitcherGUI:
     def __init__(self, root: tk.Tk) -> None:
@@ -95,11 +106,12 @@ class StitcherGUI:
         opts.grid(row=3, column=0, columnspan=3, sticky="w", **pad)
 
         ttk.Label(opts, text="Canvas:").pack(side="left")
-        self.canvas_var = tk.StringVar(value=DEFAULT_CANVAS)
-        # Presets + a "custom" entry that unlocks the WxH field beside it.
+        self.canvas_var = tk.StringVar(value=DEFAULT_CANVAS_CHOICE)
+        # Presets (shown as "name (WxH)") + a "custom" entry that unlocks the
+        # WxH field beside it.
         self.canvas_combo = ttk.Combobox(
             opts, textvariable=self.canvas_var,
-            values=list(CANVASES) + ["custom"], width=10, state="readonly")
+            values=CANVAS_CHOICES, width=18, state="readonly")
         self.canvas_combo.pack(side="left", padx=(4, 16))
         self.canvas_combo.bind("<<ComboboxSelected>>", lambda _e: self._sync_canvas())
 
@@ -161,16 +173,17 @@ class StitcherGUI:
     def _sync_canvas(self) -> None:
         # The custom WxH field is only live when collage + "custom" is selected.
         custom = (self.mode_var.get() == "collage"
-                  and self.canvas_var.get() == "custom")
+                  and _canvas_token(self.canvas_var.get()) == "custom")
         self.custom_entry.configure(state="normal" if custom else "disabled")
         self._sync_output_default()
 
     def _effective_canvas(self) -> str:
         """The canvas string to hand to parse_canvas: the custom WxH when
-        'custom' is selected, otherwise the chosen preset."""
-        if self.mode_var.get() == "collage" and self.canvas_var.get() == "custom":
+        'custom' is selected, otherwise the chosen preset name."""
+        token = _canvas_token(self.canvas_var.get())
+        if self.mode_var.get() == "collage" and token == "custom":
             return self.custom_var.get().strip()
-        return self.canvas_var.get()
+        return token
 
     def _sync_output_default(self) -> None:
         """Keep the default output name in step with the canvas/mode, unless
