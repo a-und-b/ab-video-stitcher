@@ -43,7 +43,7 @@ No third-party Python packages are needed — `tkinter` ships with Python.
 ### CLI
 
 ```bash
-python video_stitcher.py /path/to/folder                  # collage, auto layout → stitched_4k.mp4
+python video_stitcher.py /path/to/folder                  # collage, auto layout → stitched_5k.mp4
 python video_stitcher.py /path/to/folder -o out.mp4       # custom output
 python video_stitcher.py /path/to/folder --cols 3         # force 3 columns (collage only)
 python video_stitcher.py /path/to/folder --canvas 4k      # 3840x2160 collage (default: 5k)
@@ -99,8 +99,9 @@ frames within the limit and switches oversized frames (such as the 5k canvas) to
 - There is no automated test suite. To verify a change, run the tool against a
   folder of differing-size/duration clips and inspect the output video and the
   printed layout table.
-- The default output filename is `stitched_4k.mp4` regardless of canvas; pass
-  `-o` to choose your own.
+- The default output filename follows the canvas: `stitched_5k.mp4` (collage,
+  default canvas) or `stitched_4k.mp4` with `--canvas 4k`; concat writes
+  `stitched.mp4`. Pass `-o` to choose your own.
 
 ## License
 

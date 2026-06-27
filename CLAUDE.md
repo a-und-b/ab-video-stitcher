@@ -19,7 +19,7 @@ There is no package config, no test suite, no git — just these two scripts and
 ## Running
 
 ```bash
-python video_stitcher.py /path/to/folder                  # collage, auto layout → stitched_4k.mp4
+python video_stitcher.py /path/to/folder                  # collage, auto layout → stitched_5k.mp4 (name follows --canvas)
 python video_stitcher.py /path/to/folder -o out.mp4       # custom output
 python video_stitcher.py /path/to/folder --cols 3         # force 3 columns (collage only)
 python video_stitcher.py /path/to/folder --canvas 4k      # 3840x2160 collage (default: 5k)

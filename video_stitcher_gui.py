@@ -37,6 +37,10 @@ from video_stitcher import (
 PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
            "medium", "slow", "slower", "veryslow"]
 
+# Output names we generated automatically — safe to overwrite when the canvas
+# or mode changes. A name outside this set means the user typed their own.
+AUTO_OUTPUT_NAMES = {"stitched.mp4", "stitched_4k.mp4", "stitched_5k.mp4"}
+
 
 class StitcherGUI:
     def __init__(self, root: tk.Tk) -> None:
@@ -69,7 +73,7 @@ class StitcherGUI:
 
         # Output file
         ttk.Label(frm, text="Output file:").grid(row=1, column=0, sticky="w", **pad)
-        self.output_var = tk.StringVar(value="stitched_4k.mp4")
+        self.output_var = tk.StringVar(value=f"stitched_{DEFAULT_CANVAS}.mp4")
         ttk.Entry(frm, textvariable=self.output_var).grid(row=1, column=1, sticky="ew", **pad)
         ttk.Button(frm, text="Save as…", command=self._pick_output).grid(row=1, column=2, **pad)
 
@@ -93,6 +97,8 @@ class StitcherGUI:
             opts, textvariable=self.canvas_var, values=list(CANVASES),
             width=5, state="readonly")
         self.canvas_combo.pack(side="left", padx=(4, 16))
+        self.canvas_combo.bind(
+            "<<ComboboxSelected>>", lambda _e: self._sync_output_default())
 
         ttk.Label(opts, text="Columns:").pack(side="left")
         self.cols_var = tk.StringVar(value="auto")
@@ -136,6 +142,17 @@ class StitcherGUI:
         collage = self.mode_var.get() == "collage"
         self.cols_entry.configure(state="normal" if collage else "disabled")
         self.canvas_combo.configure(state="readonly" if collage else "disabled")
+        self._sync_output_default()
+
+    def _sync_output_default(self) -> None:
+        """Keep the default output name in step with the canvas/mode, unless
+        the user has typed a custom one."""
+        if self.output_var.get().strip() not in AUTO_OUTPUT_NAMES:
+            return
+        if self.mode_var.get() == "collage":
+            self.output_var.set(f"stitched_{self.canvas_var.get()}.mp4")
+        else:
+            self.output_var.set("stitched.mp4")
 
     # ── File pickers ──────────────────────────────────────────────────────
     def _pick_folder(self) -> None:

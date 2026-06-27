@@ -426,8 +426,9 @@ def main() -> None:
     parser.add_argument(
         "-o", "--output",
         type=Path,
-        default=Path("stitched_4k.mp4"),
-        help="Output file path (default: stitched_4k.mp4)",
+        default=None,
+        help="Output file path (default: stitched_<canvas>.mp4 for collage, "
+             "e.g. stitched_5k.mp4; stitched.mp4 for concat)",
     )
     parser.add_argument(
         "--mode",
@@ -487,6 +488,8 @@ def main() -> None:
     clips = discover_clips(args.folder)
 
     if args.mode == "concat":
+        # Concat has no canvas, so the default name carries no size suffix.
+        output = args.output or Path("stitched.mp4")
         # Linear: clips play one after another. Target size = the largest
         # clip in the batch (by pixel area), rounded down to even dims.
         biggest = max(clips, key=lambda c: c.width * c.height)
@@ -502,10 +505,12 @@ def main() -> None:
                   f"→ {target_w}x{target_h}  ({clip.duration:.1f}s)")
 
         codec = resolve_codec(args.codec, target_w, target_h)
-        cmd = build_concat_cmd(clips, args.output, target_w, target_h,
+        cmd = build_concat_cmd(clips, output, target_w, target_h,
                                crf=args.crf, preset=args.preset, codec=codec)
         out_w, out_h, out_duration = target_w, target_h, total_duration
     else:
+        # Default name carries the canvas size so 4k/5k outputs don't collide.
+        output = args.output or Path(f"stitched_{args.canvas}.mp4")
         canvas_w, canvas_h = CANVASES[args.canvas]
         max_duration = max(c.duration for c in clips)
         print(f"\n  {len(clips)} clips found. Longest: {max_duration:.1f}s")
@@ -519,7 +524,7 @@ def main() -> None:
             print(f"    [{clip.path.name}]  → {cell.w}x{cell.h} @ ({cell.x},{cell.y})")
 
         codec = resolve_codec(args.codec, canvas_w, canvas_h)
-        cmd = build_ffmpeg_cmd(clips, cells, args.output, max_duration,
+        cmd = build_ffmpeg_cmd(clips, cells, output, max_duration,
                                crf=args.crf, preset=args.preset,
                                canvas_w=canvas_w, canvas_h=canvas_h, codec=codec)
         out_w, out_h, out_duration = canvas_w, canvas_h, max_duration
@@ -528,7 +533,7 @@ def main() -> None:
     if args.codec == "auto" and codec == "hevc":
         codec_note = "  (auto-selected: too large for Mac H.264 hardware decode)"
     print(f"\n  Codec: {codec}{codec_note}")
-    print(f"  Encoding to {args.output} …\n")
+    print(f"  Encoding to {output} …\n")
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -538,7 +543,7 @@ def main() -> None:
     except FileNotFoundError:
         sys.exit("Error: ffmpeg not found. Please install ffmpeg and try again.")
 
-    print(f"\n✅ Done! Output: {args.output}")
+    print(f"\n✅ Done! Output: {output}")
     print(f"   Resolution: {out_w}x{out_h}")
     print(f"   Codec:      {codec}")
     print(f"   Duration:   {out_duration:.1f}s")
