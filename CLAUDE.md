@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A tool that combines multiple video clips into one video, with two modes:
 
-- **collage** (default): all clips play **simultaneously** in a packed grid; shorter clips loop (`-stream_loop -1`) until the longest finishes. Canvas size is selectable via `--canvas`: `4k` (3840×2160) or `5k` (5120×2160 ultrawide, default).
+- **collage** (default): all clips play **simultaneously** in a packed grid; shorter clips loop (`-stream_loop -1`) until the longest finishes. Canvas is set via `--canvas`: a named preset (`720p`/`1080p`/`1440p`/`4k`/`5k`/`square`/`vertical`, default `5k`) **or** an explicit `WxH` like `1920x1080`. `parse_canvas()` resolves either form.
 - **concat**: clips play **one after another** (linear), each scaled+padded to the largest clip's resolution.
 
 Two entry points, both dependency-free (standard library only):
@@ -22,7 +22,8 @@ There is no package config, no test suite, no git — just these two scripts and
 python video_stitcher.py /path/to/folder                  # collage, auto layout → stitched_5k.mp4 (name follows --canvas)
 python video_stitcher.py /path/to/folder -o out.mp4       # custom output
 python video_stitcher.py /path/to/folder --cols 3         # force 3 columns (collage only)
-python video_stitcher.py /path/to/folder --canvas 4k      # 3840x2160 collage (default: 5k)
+python video_stitcher.py /path/to/folder --canvas 1080p   # named preset (default: 5k)
+python video_stitcher.py /path/to/folder --canvas 1920x1080  # explicit WxH (any even size)
 python video_stitcher.py /path/to/folder --mode concat    # join clips end to end
 python video_stitcher.py /path/to/folder --codec hevc     # force H.265 (default: auto)
 python video_stitcher.py /path/to/folder --crf 18 --preset slow
@@ -53,7 +54,7 @@ The GUI ([video_stitcher_gui.py](video_stitcher_gui.py)) reuses steps 1–2 dire
 `compute_layout()` is where the real work is. Key ideas to preserve when editing:
 
 - It tries **every column count from 1..n**, lays clips into rows greedily (row breaks every `nc` clips), and picks the column count that **maximizes total filled pixels** (`fit_w * fit_h` summed). `--cols` bypasses the search.
-- `compute_layout()` and `build_ffmpeg_cmd()` take `canvas_w`/`canvas_h` params (defaulting to the `5k` constants); `main()` resolves `--canvas` via the `CANVASES` dict and threads the chosen dimensions through both. Concat mode ignores the canvas entirely (it sizes to the largest clip).
+- `compute_layout()` and `build_ffmpeg_cmd()` take `canvas_w`/`canvas_h` params (defaulting to the `5k` constants); `--canvas` is parsed by `parse_canvas()` (preset name **or** `WxH`) into `(label, w, h)`, which `main()` threads through both. The `label` drives the default output filename. Concat mode ignores the canvas entirely (it sizes to the largest clip).
 - `_layout_rows()` gives each row a "natural height" of `canvas_w / sum(aspect ratios in row)` (the height at which the row's clips, placed side-by-side at equal height, exactly span the canvas width), then scales all rows so they fill `canvas_h`.
 - Within a row, each clip's cell width is proportional to its aspect ratio; the clip is then fit inside its cell preserving aspect ratio (black bars fill leftover space).
 - **Rounding is absorbed deliberately**: the last clip in a row takes all remaining width, and the last row takes all remaining height — don't "fix" these into even splits or you reintroduce gaps.
@@ -61,10 +62,10 @@ The GUI ([video_stitcher_gui.py](video_stitcher_gui.py)) reuses steps 1–2 dire
 
 ## Gotchas
 
-- **Canvas sizes** live in the `CANVASES` dict (`4k` = 3840×2160, `5k` = 5120×2160). `5k` is the default (`DEFAULT_CANVAS`), preserving the original behavior; `CANVAS_W, CANVAS_H` are kept as back-compat default values for the function signatures. Add new sizes by extending the dict — `--canvas` choices and the GUI dropdown both read from it.
-- **H.264 / macOS hardware-decode ceiling (the "plays then freezes" bug)**: macOS VideoToolbox hardware-decodes H.264 only up to ~Level 5.2 = **36864 macroblocks**. The 5k canvas (5120×2160 = 43200 MBs) exceeds this, so x264 tags it Level 6.0 and on a Mac it plays a couple seconds then freezes while the clock keeps moving (the decoder stalls). `resolve_codec()` handles this: `--codec auto` (default) keeps H.264 for frames within the limit (`h264_safe()`) and switches oversized frames to **HEVC**, which macOS decodes fine. HEVC in MP4 **must** be tagged `hvc1` (done in `codec_output_args`) or QuickTime/Finder won't play it. Don't "simplify" this back to always-libx264. `4k` stays H.264; `5k` becomes HEVC.
+- **Canvas presets** live in the `CANVASES` dict (`720p`…`vertical`); `5k` is the default (`DEFAULT_CANVAS`), and `CANVAS_W, CANVAS_H` are kept as back-compat defaults for the function signatures. `--canvas` is **not** restricted to these — `parse_canvas()` also accepts an explicit even `WxH`. Add named presets by extending the dict (the CLI no longer uses argparse `choices`; the GUI dropdown reads `list(CANVASES)` plus a `custom` entry that unlocks a WxH field). Dimensions must be **even** (yuv420p); `parse_canvas()` rejects odd/non-positive sizes.
+- **H.264 / macOS hardware-decode ceiling (the "plays then freezes" bug)**: macOS VideoToolbox hardware-decodes H.264 only up to ~Level 5.2 = **36864 macroblocks**. The 5k canvas (5120×2160 = 43200 MBs) exceeds this, so x264 tags it Level 6.0 and on a Mac it plays a couple seconds then freezes while the clock keeps moving (the decoder stalls). `resolve_codec()` handles this: `--codec auto` (default) keeps H.264 for frames within the limit (`h264_safe()`) and switches oversized frames to **HEVC**, which macOS decodes fine. HEVC in MP4 **must** be tagged `hvc1` (done in `codec_output_args`) or QuickTime/Finder won't play it. Don't "simplify" this back to always-libx264. The switch is purely frame-size based (`h264_safe()`), not preset-name based: `4k` and smaller presets stay H.264, `5k` becomes HEVC, and a custom canvas flips to HEVC once it crosses 36864 MBs.
 - **Even dimensions matter**: cell sizes are forced even before scaling because libx264/yuv420p require it. Keep this when changing the scale step.
 - **`-thread_queue_size 512`** on every input is intentional (collage) — the default (8) starves frames when many streams decode at once, leaving most clips frozen on their first frame. Don't drop it.
 - `overlay=...:shortest=0` keeps the output running to `max_duration` rather than ending at the shortest input.
 - **concat requires uniform segments**: the `concat` filter only joins streams with identical dimensions, SAR, and frame rate — that's why every clip is scaled+padded to the target and gets `setsar=1` + `fps=…`. Don't remove the pad/setsar/fps normalization or concat will error or desync.
-- `--cols` and `--canvas` are **collage-only**; the GUI disables both controls in concat mode.
+- `--cols` and `--canvas` are **collage-only**; the GUI disables the Canvas dropdown, the custom WxH field, and Columns in concat mode. The custom field is also disabled unless the Canvas dropdown is set to `custom`.

@@ -15,12 +15,13 @@ Two modes:
 Requirements: Python 3.8+, ffmpeg on PATH.
 
 Usage:
-    python video_stitcher.py /path/to/folder               # collage → stitched_4k.mp4
-    python video_stitcher.py /path/to/folder -o out.mp4    # custom output name
-    python video_stitcher.py /path/to/folder --cols 3      # force 3 columns
-    python video_stitcher.py /path/to/folder --canvas 4k   # 3840x2160 collage
-    python video_stitcher.py /path/to/folder --mode concat # join clips end to end
-    python video_stitcher.py /path/to/folder --codec hevc  # force H.265
+    python video_stitcher.py /path/to/folder                 # collage → stitched_5k.mp4
+    python video_stitcher.py /path/to/folder -o out.mp4      # custom output name
+    python video_stitcher.py /path/to/folder --cols 3        # force 3 columns
+    python video_stitcher.py /path/to/folder --canvas 4k     # 3840x2160 preset
+    python video_stitcher.py /path/to/folder --canvas 1920x1080  # custom size
+    python video_stitcher.py /path/to/folder --mode concat   # join clips end to end
+    python video_stitcher.py /path/to/folder --codec hevc    # force H.265
 
 Codec note: the default 5k canvas (5120x2160) exceeds H.264's Mac
 hardware-decode limit, so its output is tagged Level 6.0 and "plays then
@@ -33,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -41,14 +43,55 @@ from typing import List, Tuple
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
-# Collage canvas sizes, selectable via --canvas. "4k" is true UHD 16:9;
-# "5k" is the original ultrawide (WUHD) canvas.
+# Named collage canvas presets, selectable via --canvas. "4k" is true UHD 16:9;
+# "5k" is the original ultrawide (WUHD) canvas. --canvas also accepts an
+# explicit WxH (e.g. 1920x1080) — see parse_canvas().
 CANVASES = {
-    "4k": (3840, 2160),   # UHD 16:9
-    "5k": (5120, 2160),   # WUHD ultrawide (original default)
+    "720p":     (1280, 720),    # HD 16:9
+    "1080p":    (1920, 1080),   # Full HD 16:9
+    "1440p":    (2560, 1440),   # QHD 16:9
+    "4k":       (3840, 2160),   # UHD 16:9
+    "5k":       (5120, 2160),   # WUHD ultrawide (original default)
+    "square":   (1080, 1080),   # 1:1 (Instagram feed)
+    "vertical": (1080, 1920),   # 9:16 (Stories / Reels / TikTok)
 }
 DEFAULT_CANVAS = "5k"
 CANVAS_W, CANVAS_H = CANVASES[DEFAULT_CANVAS]  # back-compat defaults
+
+
+def parse_canvas(value: str) -> Tuple[str, int, int]:
+    """Resolve a --canvas value to ``(label, width, height)``.
+
+    Accepts either a named preset from ``CANVASES`` (e.g. ``5k``) or an explicit
+    ``WxH`` string such as ``1920x1080`` / ``1920X1080``. The label is the preset
+    name or the normalised ``WxH`` string, and is used for the default output
+    filename. Raises ``ValueError`` on malformed input or non-positive / odd
+    dimensions (libx264 + yuv420p require even dimensions).
+    """
+    key = value.strip().lower()
+    if key in CANVASES:
+        w, h = CANVASES[key]
+        return key, w, h
+    m = re.fullmatch(r"(\d+)\s*[x×]\s*(\d+)", key)
+    if not m:
+        raise ValueError(
+            f"invalid canvas {value!r}: use a preset "
+            f"({', '.join(CANVASES)}) or a WxH size like 1920x1080")
+    w, h = int(m.group(1)), int(m.group(2))
+    if w <= 0 or h <= 0:
+        raise ValueError(f"canvas dimensions must be positive: {value!r}")
+    if w % 2 or h % 2:
+        raise ValueError(
+            f"canvas dimensions must be even (yuv420p needs it): {value!r}")
+    return f"{w}x{h}", w, h
+
+
+def _canvas_arg(value: str) -> Tuple[str, int, int]:
+    """argparse adapter: turn parse_canvas' ValueError into a clean CLI error."""
+    try:
+        return parse_canvas(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
 
 # H.264 Level 5.2 caps a frame at 36864 macroblocks (e.g. 4096×2304). macOS
 # VideoToolbox hardware-decodes H.264 only up to ~Level 5.2, so anything larger
@@ -441,12 +484,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--canvas",
-        type=str,
+        type=_canvas_arg,
         default=DEFAULT_CANVAS,
-        choices=list(CANVASES),
-        help="Collage canvas size (collage mode only): "
-             "4k = 3840x2160 (UHD 16:9), 5k = 5120x2160 (ultrawide). "
-             f"Default: {DEFAULT_CANVAS}.",
+        metavar="SIZE",
+        help="Collage canvas size (collage mode only): a preset "
+             "(4k = 3840x2160 UHD, 5k = 5120x2160 ultrawide) or an explicit "
+             f"WxH like 1920x1080. Default: {DEFAULT_CANVAS}.",
     )
     parser.add_argument(
         "--cols",
@@ -509,16 +552,16 @@ def main() -> None:
                                crf=args.crf, preset=args.preset, codec=codec)
         out_w, out_h, out_duration = target_w, target_h, total_duration
     else:
-        # Default name carries the canvas size so 4k/5k outputs don't collide.
-        output = args.output or Path(f"stitched_{args.canvas}.mp4")
-        canvas_w, canvas_h = CANVASES[args.canvas]
+        canvas_label, canvas_w, canvas_h = args.canvas
+        # Default name carries the canvas size so different canvases don't collide.
+        output = args.output or Path(f"stitched_{canvas_label}.mp4")
         max_duration = max(c.duration for c in clips)
         print(f"\n  {len(clips)} clips found. Longest: {max_duration:.1f}s")
 
         # Compute layout
         cells = compute_layout(clips, cols=args.cols,
                                canvas_w=canvas_w, canvas_h=canvas_h)
-        print(f"\n  Layout ({args.canvas}: {canvas_w}x{canvas_h}):")
+        print(f"\n  Layout ({canvas_label}: {canvas_w}x{canvas_h}):")
         for cell in cells:
             clip = clips[cell.clip_idx]
             print(f"    [{clip.path.name}]  → {cell.w}x{cell.h} @ ({cell.x},{cell.y})")

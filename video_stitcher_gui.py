@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -31,6 +32,7 @@ from video_stitcher import (
     build_ffmpeg_cmd,
     compute_layout,
     discover_clips,
+    parse_canvas,
     resolve_codec,
 )
 
@@ -38,8 +40,9 @@ PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
            "medium", "slow", "slower", "veryslow"]
 
 # Output names we generated automatically — safe to overwrite when the canvas
-# or mode changes. A name outside this set means the user typed their own.
-AUTO_OUTPUT_NAMES = {"stitched.mp4", "stitched_4k.mp4", "stitched_5k.mp4"}
+# or mode changes. Matches stitched.mp4, stitched_5k.mp4, stitched_1920x1080.mp4,
+# … ; a name outside this shape means the user typed their own.
+AUTO_OUTPUT_RE = re.compile(r"^stitched(_.+)?\.mp4$")
 
 
 class StitcherGUI:
@@ -87,41 +90,52 @@ class StitcherGUI:
         ttk.Radiobutton(mode_frm, text="Concat (one after another)", value="concat",
                         variable=self.mode_var, command=self._sync_mode).pack(side="left", padx=12)
 
-        # Options row
+        # Canvas / layout options (first row)
         opts = ttk.Frame(frm)
         opts.grid(row=3, column=0, columnspan=3, sticky="w", **pad)
 
         ttk.Label(opts, text="Canvas:").pack(side="left")
         self.canvas_var = tk.StringVar(value=DEFAULT_CANVAS)
+        # Presets + a "custom" entry that unlocks the WxH field beside it.
         self.canvas_combo = ttk.Combobox(
-            opts, textvariable=self.canvas_var, values=list(CANVASES),
-            width=5, state="readonly")
+            opts, textvariable=self.canvas_var,
+            values=list(CANVASES) + ["custom"], width=10, state="readonly")
         self.canvas_combo.pack(side="left", padx=(4, 16))
-        self.canvas_combo.bind(
-            "<<ComboboxSelected>>", lambda _e: self._sync_output_default())
+        self.canvas_combo.bind("<<ComboboxSelected>>", lambda _e: self._sync_canvas())
+
+        ttk.Label(opts, text="Custom (WxH):").pack(side="left")
+        self.custom_var = tk.StringVar(value="1920x1080")
+        self.custom_entry = ttk.Entry(opts, textvariable=self.custom_var, width=12)
+        self.custom_entry.pack(side="left", padx=(4, 16))
+        for evt in ("<FocusOut>", "<Return>"):
+            self.custom_entry.bind(evt, lambda _e: self._sync_output_default())
 
         ttk.Label(opts, text="Columns:").pack(side="left")
         self.cols_var = tk.StringVar(value="auto")
         self.cols_entry = ttk.Entry(opts, textvariable=self.cols_var, width=6)
         self.cols_entry.pack(side="left", padx=(4, 16))
 
-        ttk.Label(opts, text="CRF:").pack(side="left")
-        self.crf_var = tk.StringVar(value="18")
-        ttk.Spinbox(opts, from_=0, to=51, textvariable=self.crf_var, width=5).pack(side="left", padx=(4, 16))
+        # Encoder options (second row)
+        opts2 = ttk.Frame(frm)
+        opts2.grid(row=4, column=0, columnspan=3, sticky="w", **pad)
 
-        ttk.Label(opts, text="Preset:").pack(side="left")
+        ttk.Label(opts2, text="CRF:").pack(side="left")
+        self.crf_var = tk.StringVar(value="18")
+        ttk.Spinbox(opts2, from_=0, to=51, textvariable=self.crf_var, width=5).pack(side="left", padx=(4, 16))
+
+        ttk.Label(opts2, text="Preset:").pack(side="left")
         self.preset_var = tk.StringVar(value="medium")
-        ttk.Combobox(opts, textvariable=self.preset_var, values=PRESETS,
+        ttk.Combobox(opts2, textvariable=self.preset_var, values=PRESETS,
                      width=10, state="readonly").pack(side="left", padx=(4, 16))
 
-        ttk.Label(opts, text="Codec:").pack(side="left")
+        ttk.Label(opts2, text="Codec:").pack(side="left")
         self.codec_var = tk.StringVar(value="auto")
-        ttk.Combobox(opts, textvariable=self.codec_var, values=["auto", "h264", "hevc"],
+        ttk.Combobox(opts2, textvariable=self.codec_var, values=["auto", "h264", "hevc"],
                      width=6, state="readonly").pack(side="left", padx=4)
 
         # Action buttons
         btns = ttk.Frame(frm)
-        btns.grid(row=4, column=0, columnspan=3, sticky="w", **pad)
+        btns.grid(row=5, column=0, columnspan=3, sticky="w", **pad)
         self.run_btn = ttk.Button(btns, text="Stitch", command=self._start)
         self.run_btn.pack(side="left")
         self.reveal_btn = ttk.Button(btns, text="Reveal output", command=self._reveal, state="disabled")
@@ -129,11 +143,11 @@ class StitcherGUI:
 
         # Progress + log
         self.progress = ttk.Progressbar(frm, mode="indeterminate")
-        self.progress.grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
+        self.progress.grid(row=6, column=0, columnspan=3, sticky="ew", **pad)
 
         self.log = scrolledtext.ScrolledText(frm, height=14, wrap="word", state="disabled")
-        self.log.grid(row=6, column=0, columnspan=3, sticky="nsew", **pad)
-        frm.rowconfigure(6, weight=1)
+        self.log.grid(row=7, column=0, columnspan=3, sticky="nsew", **pad)
+        frm.rowconfigure(7, weight=1)
 
         self._sync_mode()
 
@@ -142,17 +156,35 @@ class StitcherGUI:
         collage = self.mode_var.get() == "collage"
         self.cols_entry.configure(state="normal" if collage else "disabled")
         self.canvas_combo.configure(state="readonly" if collage else "disabled")
+        self._sync_canvas()
+
+    def _sync_canvas(self) -> None:
+        # The custom WxH field is only live when collage + "custom" is selected.
+        custom = (self.mode_var.get() == "collage"
+                  and self.canvas_var.get() == "custom")
+        self.custom_entry.configure(state="normal" if custom else "disabled")
         self._sync_output_default()
+
+    def _effective_canvas(self) -> str:
+        """The canvas string to hand to parse_canvas: the custom WxH when
+        'custom' is selected, otherwise the chosen preset."""
+        if self.mode_var.get() == "collage" and self.canvas_var.get() == "custom":
+            return self.custom_var.get().strip()
+        return self.canvas_var.get()
 
     def _sync_output_default(self) -> None:
         """Keep the default output name in step with the canvas/mode, unless
         the user has typed a custom one."""
-        if self.output_var.get().strip() not in AUTO_OUTPUT_NAMES:
+        if not AUTO_OUTPUT_RE.match(self.output_var.get().strip()):
             return
-        if self.mode_var.get() == "collage":
-            self.output_var.set(f"stitched_{self.canvas_var.get()}.mp4")
-        else:
+        if self.mode_var.get() != "collage":
             self.output_var.set("stitched.mp4")
+            return
+        try:
+            label = parse_canvas(self._effective_canvas())[0]
+        except ValueError:
+            label = DEFAULT_CANVAS
+        self.output_var.set(f"stitched_{label}.mp4")
 
     # ── File pickers ──────────────────────────────────────────────────────
     def _pick_folder(self) -> None:
@@ -208,8 +240,15 @@ class StitcherGUI:
                     return
 
         preset = self.preset_var.get()
-        canvas = self.canvas_var.get()
+        canvas = self._effective_canvas()
         codec = self.codec_var.get()
+
+        if mode == "collage":
+            try:
+                parse_canvas(canvas)
+            except ValueError as e:
+                messagebox.showerror("AB Video Stitcher", f"Canvas: {e}")
+                return
 
         # Lock UI.
         self.run_btn.configure(state="disabled")
@@ -251,11 +290,11 @@ class StitcherGUI:
                 cmd = build_concat_cmd(clips, output, tw, th,
                                        crf=crf, preset=preset, codec=chosen)
             else:
-                canvas_w, canvas_h = CANVASES[canvas]
+                canvas_label, canvas_w, canvas_h = parse_canvas(canvas)
                 max_dur = max(c.duration for c in clips)
                 cells = compute_layout(clips, cols=cols,
                                        canvas_w=canvas_w, canvas_h=canvas_h)
-                emit(f"\n  Layout ({canvas}: {canvas_w}x{canvas_h}), {max_dur:.1f}s:\n")
+                emit(f"\n  Layout ({canvas_label}: {canvas_w}x{canvas_h}), {max_dur:.1f}s:\n")
                 for cell in cells:
                     name = clips[cell.clip_idx].path.name
                     emit(f"    [{name}] → {cell.w}x{cell.h} @ ({cell.x},{cell.y})\n")
