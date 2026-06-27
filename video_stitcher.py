@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Video Stitcher — Combine multiple video clips into a single video.
+AB Video Stitcher — Combine multiple video clips into a single video.
 
 Two modes:
   collage (default): All input clips play simultaneously. Shorter clips loop
@@ -484,7 +484,7 @@ def main() -> None:
     if not args.folder.is_dir():
         sys.exit(f"Error: {args.folder} is not a directory.")
 
-    print(f"\n🎬 Video Stitcher ({args.mode}) — scanning {args.folder}\n")
+    print(f"\n🎬 AB Video Stitcher ({args.mode}) — scanning {args.folder}\n")
     clips = discover_clips(args.folder)
 
     if args.mode == "concat":

@@ -1,4 +1,4 @@
-# Video Stitcher
+# AB Video Stitcher
 
 Combine multiple video clips into a single video — either as a **packed collage
 grid** where every clip plays at once, or as a **linear concatenation** where

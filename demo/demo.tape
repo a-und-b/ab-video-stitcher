@@ -1,4 +1,4 @@
-# VHS tape — scripted recording of the Video Stitcher terminal demo.
+# VHS tape — scripted recording of the AB Video Stitcher terminal demo.
 # VHS turns this file into a GIF with no manual screen-recording.
 #   Install:  brew install vhs   (or: go install github.com/charmbracelet/vhs@latest)
 #   Record:   cd demo && vhs demo.tape   →   produces demo.gif
@@ -16,7 +16,7 @@ Set Padding 20
 Set Theme "Catppuccin Mocha"
 
 # Let the title breathe.
-Type "# Video Stitcher — pack clips into a 5k collage" Sleep 800ms Enter
+Type "# AB Video Stitcher — pack clips into a 5k collage" Sleep 800ms Enter
 Sleep 1s
 
 # Show the inputs (different sizes + durations).

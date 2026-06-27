@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Video Stitcher GUI — a simple tkinter front-end for video_stitcher.py.
+AB Video Stitcher GUI — a simple tkinter front-end for video_stitcher.py.
 
 Pick an input folder, choose collage or concat mode, tweak a couple of
 options, and hit Stitch. Encoding runs in a background thread and ffmpeg's
@@ -45,7 +45,7 @@ AUTO_OUTPUT_NAMES = {"stitched.mp4", "stitched_4k.mp4", "stitched_5k.mp4"}
 class StitcherGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        root.title("Video Stitcher")
+        root.title("AB Video Stitcher")
         root.minsize(640, 520)
 
         # Thread → UI message channel.
@@ -183,7 +183,7 @@ class StitcherGUI:
 
         folder = Path(self.folder_var.get()).expanduser()
         if not folder.is_dir():
-            messagebox.showerror("Video Stitcher", "Please choose a valid input folder.")
+            messagebox.showerror("AB Video Stitcher", "Please choose a valid input folder.")
             return
 
         output = Path(self.output_var.get()).expanduser()
@@ -194,7 +194,7 @@ class StitcherGUI:
         try:
             crf = int(self.crf_var.get())
         except ValueError:
-            messagebox.showerror("Video Stitcher", "CRF must be a whole number (0–51).")
+            messagebox.showerror("AB Video Stitcher", "CRF must be a whole number (0–51).")
             return
 
         cols = None
@@ -204,7 +204,7 @@ class StitcherGUI:
                 try:
                     cols = int(raw)
                 except ValueError:
-                    messagebox.showerror("Video Stitcher", "Columns must be a number or 'auto'.")
+                    messagebox.showerror("AB Video Stitcher", "Columns must be a number or 'auto'.")
                     return
 
         preset = self.preset_var.get()
@@ -316,7 +316,7 @@ class StitcherGUI:
                     self.progress.stop()
                     self.run_btn.configure(state="normal")
                     self._log(f"\n❌ {payload}\n")
-                    messagebox.showerror("Video Stitcher", str(payload))
+                    messagebox.showerror("AB Video Stitcher", str(payload))
         except queue.Empty:
             pass
         self.root.after(100, self._drain_queue)
